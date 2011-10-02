@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <site site="http://ten.com.au/.*"
-    plugin="http://apps.v2.movideo.com/player/flash/movideo_player.swf"
+    plugin="http://static.movideo.com/flash/movideo_player.swf"
  	initialState="playing"
  	version="1.0">
 
