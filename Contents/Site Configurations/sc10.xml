@@ -2,7 +2,7 @@
 
 <site site="http://ten.com.au/.*"
     plugin="http://static.movideo.com/flash/movideo_player.swf"
- 	initialState="playing"
+     initialState="playing"
  	version="1.0">
 
 <crop x="0" y="0" width="512" height="288" />
@@ -24,7 +24,9 @@
     <command name="pause" />
    </condition>
    <action>
-    <click x="19" y="301" />
+    <click x="19" y="200" /> <!-- bring up progress bar -->
+    <pause time="250" />
+    <click x="53" y="270" />
     <goto state="paused" />
    </action>
   </event>
@@ -36,7 +38,9 @@
     <command name="play" />
    </condition>
    <action>
-    <click x="19" y="301" />
+    <click x="19" y="200" /> <!-- bring up progress bar -->
+    <pause time="250" />
+    <click x="53" y="270" />
     <goto state="playing" />
    </action>
   </event>
