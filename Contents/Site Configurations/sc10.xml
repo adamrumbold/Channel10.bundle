@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <site site="http://ten.com.au/.*"
-    plugin="http://static.movideo.com/flash/movideo_player.swf"
-     initialState="playing"
+       plugin="http://code.ten.com.au/video/ten_movideo_player.swf"
+       initialState="playing"
  	version="1.0">
 
 <crop x="0" y="0" width="512" height="288" />
