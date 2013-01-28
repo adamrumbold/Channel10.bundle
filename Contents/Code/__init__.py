@@ -80,8 +80,7 @@ def GetGlobalConfig(URL):
         if (firstTime == 1) & (clientFound == 1) & ('"client' not in x):
             firstTime = 0
             prev = x.replace("\"","")
-            
-            
+                        
         elif (firstTime == 0) & (clientFound == 1):
             firstTime = 1
             if (prev == 'token'):
@@ -96,12 +95,7 @@ def GetGlobalConfig(URL):
     CONFIG = configPlaylists            
     return configPlaylists
     
-def OldGetToken():
-    xml = XML.ElementFromURL(TOKEN_URL)
-    Log("In GetToken")
-    Log(xml)
-    return xml.xpath('/session')[0].find("token").text
-    
+
 def GetRootPlaylist(URL):
     xml = XML.ElementFromURL(URL)
     return xml.xpath('/playlist')[0].find("id").text    
@@ -110,40 +104,27 @@ def GetToken(URL):
     xml = XML.ElementFromURL(URL)
     return xml.xpath('/session')[0].find("token").text    
 
-def GetSeriesForCategory(category):
-    
-    seriesSummaries = []
-    Log("attempting>>"+ TOP_URL + category['playlist'] + "?depth=2&token=" + category['token'] + TOP_SUFFIX)
-    
-    xml = XML.ElementFromURL(TOP_URL + category['playlist'] + "?depth=2&token=" + category['token'] + TOP_SUFFIX)
-    
-    #loop throough child playlist for selected category - pulling out show titles
-    for series in xml.xpath('/playlist/childPlaylists/playlist/childPlaylists/playlist'):
-        seriesSummary = {}
-        seriesSummary['id'] = series.find('id').text
-        title = series.find('title').text
-        title = title.partition('|')[2] 
-        seriesSummary['title'] = title
-        seriesSummary['keywords'] = category
-        seriesSummary['thumb'] = ""
-        seriesSummary['xml'] = series
-        seriesSummaries.append(seriesSummary)
-                
-    return seriesSummaries
-
 #use API to get media object for a given playlist
 def GetMedia(playlistID,token):
-    mediaURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "/media?token=" + token
+    #mediaURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "/media?token=" + token
+    mediaURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "?depth=2&token=" + token + TOP_SUFFIX
+    
+    Log("MediaURL >> " + mediaURL)
     xml = XML.ElementFromURL(mediaURL)
     shows = []
-    for media in xml.xpath('/media'):
+    for media in xml.xpath('/playlist/mediaList/media'):
         show = {}
         show['title'] = media.find('title').text
         show['description'] = media.find('description').text
         show['duration'] = media.find('duration').text
-        show['thumb'] = media.xpath("defaultImage/url")[0].text
-        show['aired_date'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[0]
-        show['aired_time'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[2]
+        #show['thumb'] = media.xpath("defaultImage/url")[0].text
+        try:
+            show['airedDate'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[0]
+            show['airedTime'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[2]
+        except:
+            show['airedDate'] = ""
+            show['airedTime'] = ""
+        show['ID'] = media.find('id').text
         Log("SHOW >>>>>> ")
         Log(str(show))
         shows.append(show)
@@ -151,82 +132,50 @@ def GetMedia(playlistID,token):
     return shows
    
 #use API to get child playlist(s) for any given playlist        
-def GetChildPlaylists(playlistID,token):
-    childURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "/onlyChildPlaylists=true&depth=2?token=" + token
+def GetChildPlaylists(playlistID,token,videoPageURL):
+    childURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "?onlyChildPlaylists=true&depth=2&token=" + token
+    Log("attempting child playlist for >>" + childURL )
     xml = XML.ElementFromURL(childURL)
     playlists = []
-    for plist in xml.xpath('/playlist/childPlaylists'):
+    for plist in xml.xpath('/playlist/childPlaylists/playlist'):
         playlist = {}
         playlist['token'] = token
+        playlist['videoPageURL'] = videoPageURL
         playlist['ID'] = plist.find('id').text
         playlist['title'] = plist.find('title').text
         playlist['description'] = plist.find('description').text
+        playlist['thumb'] = ""
         playlists.append(playlist)
     
     return playlists    
-    
-def GetSeriesInfo(seriesId):
-    xml = XML.ElementFromURL(SERIES_URL + seriesId + "?token=" + TOKEN + SERIES_SUFFIX)
-    SERIES_PLAYLIST_ID = xml.xpath('/playlist/childPlaylists/playlist')[0].find("id").text
-    xml = XML.ElementFromURL(SERIES_URL + SERIES_PLAYLIST_ID + "?token=" + TOKEN + SERIES_SUFFIX)
-    episodes = []
-    
-    #todo: handle genre/series#
-    #todo handle playerURL
-    for show in xml.xpath('/playlist/mediaList/media'):
-        episode = {}
-        episode['title'] = show.find('title').text
-        episode['id'] = show.find('id').text
-        #episode['filename'] = show.find('filename').text
-        episode['description'] = show.find('description').text
-        played = show.find('creationDate').text.partition("T")
-        playedTime = played[2]
-        playedDate = played[0]
-        episode['airedDate'] = playedDate
-        episode['airedTime'] = playedTime
-        episode['thumb'] = show.find('imagePath').text + "96x128.png"
-        episode['playerUrl'] = PLAYER_URL + "movideo_p="+ SERIES_PLAYLIST_ID + "&movideo_m=" + show.find('id').text
-        episodes.append(episode)
-    return episodes
-    
+        
 #setup the Main Video Menu - ie. get Top level categories
 def VideoMainMenu():
     dir = MediaContainer(viewGroup="InfoList")
     conf = GetGlobalConfig(CONFIG_URL)
     for x in conf:
-        dir.Append(Function(DirectoryItem(CategoryMenu, x['accName']), category=x))    
+        temp = {}
+        temp['ID'] = x['playlist']
+        temp['token'] = x['token']
+        temp['videoPageURL'] = x['videoPageURL']
+        temp['title'] = x['accName']
+        dir.Append(Function(DirectoryItem(PlaylistMenu, x['accName']), playlist = temp ))    
     return dir
 
-#Handle drill down on a category
-def CategoryMenu(sender, category):
-    seriesInfos = GetSeriesForCategory(category)
-    #Log(str(seriesInfos))
+def PlaylistMenu(sender, playlist):
+    dir = MediaContainer(viewGroup="InfoList", title2=playlist['title'])
+    childPlist = GetChildPlaylists(playlist['ID'],playlist['token'],playlist['videoPageURL'])
     
-    #if category != "recent":
-    #   seriesInfos.sort(key=lambda si: si["title"].lower())
-    
-    dir = MediaContainer(viewGroup="InfoList", title2=category['accName'])
-    
-    for seriesInfo in seriesInfos:
-        dir.Append(Function(DirectoryItem(SeriesMenu, seriesInfo['title'], thumb=seriesInfo['thumb']), 
-                   series = seriesInfo['title']))
-    
+    if len(childPlist) > 0:
+        for plist in childPlist:
+            dir.Append(Function(DirectoryItem(PlaylistMenu, plist['title'], thumb=plist['thumb']), 
+                       playlist = plist))
+    else:
+        mediaList = GetMedia(playlist['ID'],playlist['token'])
+        for show in mediaList:
+            description = "Broadcast " + show['airedDate'] + " at " + show['airedTime'] + "." +"\n"
+            description += "\n" + show['description'] + "\n"
+            showURL = playlist['videoPageURL'] + "?movideo_p=" + playlist['ID'] + "&movieo_m=" + show['ID']
+            dir.Append(WebVideoItem(showURL, title=show['title'], subtitle="",
+                                   summary=description, thumb="", duration=""))
     return dir
-
-#Handle drill down on a series - ie. get episodes
-def SeriesMenu(sender, seriesId, title2):
-    dir = MediaContainer(viewGroup="InfoList", title2=title2)
-    GetSeriesInfo(seriesId)
-    for episode in GetSeriesInfo(seriesId):
-        # This is supposed to be the broadcast date to give an idea of how recent the episode is.  The
-        # element in the json that seems to be broadcast date doesn't always seem to be populated though.
-        # Hopefully the episodes are usually uploaded on the same day as they're broadcast.
-        
-        description = "Broadcast " + episode['airedDate'] + " at " + episode['airedTime'] + "." +"\n"
-        description += "\n" + episode['description'] + "\n"
-        
-        dir.Append(WebVideoItem(episode['playerUrl'], title=episode['title'], subtitle="",
-                               summary=description, thumb=episode['thumb'], duration=""))
-    return dir
-
-
