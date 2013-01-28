@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<site site="http://ten.com.au/.*"
+<site site="http://.*(ten|one|eleven|thebiggestloser|masterchef|theprojecttv|livingroomtv|ytt).com.au/.*"
        plugin="http://code.ten.com.au/video/ten_movideo_player.swf"
        initialState="playing"
  	version="1.0">

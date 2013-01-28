@@ -50,14 +50,15 @@ def GetGlobalConfig(URL):
             clientFound = 1
             
         if ('"client' in x) & (clientFound == 1):
-            if client != {}:
-                #now we have token get parent playlist as required for some client configs
-                rootPlaylistURL = API_URL + "playlist/" + client['playlist'] + "/firstRootPlaylist?token=" + client['token']
-                newPlaylistID = GetRootPlaylist(rootPlaylistURL)
-                Log("playlist >>>> " + newPlaylistID)
-                client['playlist'] = newPlaylistID
-                configPlaylists.append(client)
-                
+            if (client != {}) :
+                if (client['accName'] != 'TEN News') & (client['token'] != ""):
+                    #now we have token get parent playlist as required for some client configs
+                    rootPlaylistURL = API_URL + "playlist/" + client['playlist'] + "/firstRootPlaylist?token=" + client['token']
+                    newPlaylistID = GetRootPlaylist(rootPlaylistURL)
+                    Log("playlist >>>> " + newPlaylistID)
+                    client['playlist'] = newPlaylistID
+                    configPlaylists.append(client)
+                    
             client = {}
             client['clientID'] = re.search("[0-9]+",x).group(0)
         
@@ -70,7 +71,10 @@ def GetGlobalConfig(URL):
             if (prev == 'token'):
                 tokenURL = API_URL + "session?key=" + client['apiKey'] + "&applicationalias=" + client['flashAppName']
                 Log("TOKEN URL>> "+ tokenURL)
-                client[prev] = GetToken(tokenURL)
+                try:
+                    client[prev] = GetToken(tokenURL)
+                except:
+                    client[prev] = ""
                 Log(prev + " >> " + client[prev])
             else:
                 client[prev] = x.replace("\"","")
@@ -104,6 +108,7 @@ def GetMedia(playlistID,token):
         show['duration'] = media.find('duration').text
         show['ID'] = media.find('id').text
         try:
+            #thumb paths are slow to retrieve and not displaying so ignore
             #show['thumb'] = GetImage(show['ID'],token)
             media.xpath("defaultImage/url")[0].text
         except:
@@ -124,15 +129,19 @@ def GetChildPlaylists(playlistID,token,videoPageURL):
     Log("attempting child playlist for >>" + childURL )
     xml = XML.ElementFromURL(childURL)
     playlists = []
-    for plist in xml.xpath('/playlist/childPlaylists/playlist'):
-        playlist = {}
-        playlist['token'] = token
-        playlist['videoPageURL'] = videoPageURL
-        playlist['ID'] = plist.find('id').text
-        playlist['title'] = plist.find('title').text
-        playlist['description'] = plist.find('description').text
-        playlist['thumb'] = ""
-        playlists.append(playlist)
+    try:
+        for plist in xml.xpath('/playlist/childPlaylists/playlist'):
+            playlist = {}
+            playlist['token'] = token
+            playlist['videoPageURL'] = videoPageURL
+            playlist['ID'] = plist.find('id').text
+            playlist['title'] = plist.find('title').text
+            playlist['description'] = plist.find('description').text
+            playlist['thumb'] = ""
+            playlists.append(playlist)
+    except:
+        pass
+    
     return playlists    
         
 #setup the Main Video Menu - ie. get Top level categories
@@ -162,6 +171,7 @@ def PlaylistMenu(sender, playlist):
             description = "Broadcast " + show['airedDate'] + " at " + show['airedTime'] + "." +"\n"
             description += "\n" + show['description'] + "\n"
             showURL = playlist['videoPageURL'] + "?movideo_p=" + playlist['ID'] + "&movieo_m=" + show['ID']
+            Log(show['title'] + " >> " + showURL)
             dir.Append(WebVideoItem(showURL, title=show['title'], subtitle="",
                                    summary=description, thumb=show['thumb'], duration=show['duration']))
     return dir
