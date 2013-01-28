@@ -9,34 +9,19 @@ import re
 
 VIDEO_PREFIX = "/video/sc10"
 NAME = L('Title')
-
 DEFAULT_CACHE_INTERVAL = 1800
 OTHER_CACHE_INTERVAL = 300
-
 ART           = 'ch10-background.jpg'
 ICON          = 'icon-default.jpg'
-
-BASE = "http://ten.com.au/watch-tv-episodes-online.htm"
-TOKEN_URL = "http://api.v2.movideo.com/rest/session?key=movideoNetwork10&applicationalias=main-player"
-#TOP_URL = "http://api.v2.movideo.com/rest/playlist/41326?depth=2"
-TOP_URL = "http://api.v2.movideo.com/rest/playlist/"
-TOP_SUFFIX = "&mediaLimit=50&omitFields=client,copyright,mediaSchedules,creationDate,cuePointsExist,defaultImage,encodingProfiles,filename,imageFilename,mediaFileExists,mediaType,lastModifiedDate,ratio,status,syndicated,tagProfileId"
-SERIES_URL = "http://api.v2.movideo.com/rest/playlist/"
-SERIES_SUFFIX = "&includeMedia=true&mediaLimit=50&omitFields=client%2CmediaSchedules"
-PLAYER_URL = "http://ten.com.au/video-player.htm?"
+TOP_SUFFIX = "&omitFields=client,copyright,creationDate,cuePointsExist,defaultImage,encodingProfiles,filename,mediaFileExists,mediaType,lastModifiedDate,ratio,status,syndicated,tagProfileId"
 CONFIG_URL = "http://ten.com.au/ten.video-settings.js"
-CONFIG = {}
-TOKEN = ""
-
+API_URL = "http://api.v2.movideo.com/rest/"
 
 ####################################################################################################
 
 def Start():
-    global CONFIG
-    global TOKEN
     
     Plugin.AddPrefixHandler(VIDEO_PREFIX, VideoMainMenu, L('VideoTitle'), ICON, ART)
-
     Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
 
     MediaContainer.art = R(ART)
@@ -44,8 +29,7 @@ def Start():
     DirectoryItem.thumb = R(ICON)
     
     HTTP.SetCacheTime(DEFAULT_CACHE_INTERVAL)
-    #HTTP.Headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.6; rv:2.0.1) Gecko/20100101 Firefox/4.0.1'
-
+    
 ####################################################################################################
 
 def GetGlobalConfig(URL):
@@ -68,7 +52,7 @@ def GetGlobalConfig(URL):
         if ('"client' in x) & (clientFound == 1):
             if client != {}:
                 #now we have token get parent playlist as required for some client configs
-                rootPlaylistURL = "http://api.v2.movideo.com/rest/playlist/" + client['playlist'] + "/firstRootPlaylist?token=" + client['token']
+                rootPlaylistURL = API_URL + "playlist/" + client['playlist'] + "/firstRootPlaylist?token=" + client['token']
                 newPlaylistID = GetRootPlaylist(rootPlaylistURL)
                 Log("playlist >>>> " + newPlaylistID)
                 client['playlist'] = newPlaylistID
@@ -84,18 +68,15 @@ def GetGlobalConfig(URL):
         elif (firstTime == 0) & (clientFound == 1):
             firstTime = 1
             if (prev == 'token'):
-                tokenURL = "http://api.v2.movideo.com/rest/session?key=" + client['apiKey'] + "&applicationalias=" + client['flashAppName']
+                tokenURL = API_URL + "session?key=" + client['apiKey'] + "&applicationalias=" + client['flashAppName']
                 Log("TOKEN URL>> "+ tokenURL)
                 client[prev] = GetToken(tokenURL)
                 Log(prev + " >> " + client[prev])
             else:
                 client[prev] = x.replace("\"","")
                 Log(prev + " >> " + x.replace("\"",""))
-            
-    CONFIG = configPlaylists            
     return configPlaylists
     
-
 def GetRootPlaylist(URL):
     xml = XML.ElementFromURL(URL)
     return xml.xpath('/playlist')[0].find("id").text    
@@ -104,11 +85,15 @@ def GetToken(URL):
     xml = XML.ElementFromURL(URL)
     return xml.xpath('/session')[0].find("token").text    
 
+def GetImage(mediaID,token):
+    imageURL = API_URL + "media/" + mediaID + "/images?token=" + token
+    xml = XML.ElementFromURL(imageURL)
+    Log("Image URL>>" + xml.xpath('/list/image/url')[2].text)
+    return xml.xpath('/list/image/url')[2].text
+    
 #use API to get media object for a given playlist
 def GetMedia(playlistID,token):
-    #mediaURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "/media?token=" + token
-    mediaURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "?depth=2&token=" + token + TOP_SUFFIX
-    
+    mediaURL = API_URL + "playlist/" + playlistID + "?depth=2&token=" + token + TOP_SUFFIX
     Log("MediaURL >> " + mediaURL)
     xml = XML.ElementFromURL(mediaURL)
     shows = []
@@ -117,23 +102,25 @@ def GetMedia(playlistID,token):
         show['title'] = media.find('title').text
         show['description'] = media.find('description').text
         show['duration'] = media.find('duration').text
-        #show['thumb'] = media.xpath("defaultImage/url")[0].text
+        show['ID'] = media.find('id').text
+        try:
+            #show['thumb'] = GetImage(show['ID'],token)
+            media.xpath("defaultImage/url")[0].text
+        except:
+            show['thumb'] = ""            
         try:
             show['airedDate'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[0]
             show['airedTime'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[2]
         except:
             show['airedDate'] = ""
             show['airedTime'] = ""
-        show['ID'] = media.find('id').text
-        Log("SHOW >>>>>> ")
-        Log(str(show))
-        shows.append(show)
-    
+        
+        shows.append(show)    
     return shows
    
 #use API to get child playlist(s) for any given playlist        
 def GetChildPlaylists(playlistID,token,videoPageURL):
-    childURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "?onlyChildPlaylists=true&depth=2&token=" + token
+    childURL = API_URL + "playlist/" + playlistID + "?onlyChildPlaylists=true&depth=2&token=" + token
     Log("attempting child playlist for >>" + childURL )
     xml = XML.ElementFromURL(childURL)
     playlists = []
@@ -146,7 +133,6 @@ def GetChildPlaylists(playlistID,token,videoPageURL):
         playlist['description'] = plist.find('description').text
         playlist['thumb'] = ""
         playlists.append(playlist)
-    
     return playlists    
         
 #setup the Main Video Menu - ie. get Top level categories
@@ -177,5 +163,5 @@ def PlaylistMenu(sender, playlist):
             description += "\n" + show['description'] + "\n"
             showURL = playlist['videoPageURL'] + "?movideo_p=" + playlist['ID'] + "&movieo_m=" + show['ID']
             dir.Append(WebVideoItem(showURL, title=show['title'], subtitle="",
-                                   summary=description, thumb="", duration=""))
+                                   summary=description, thumb=show['thumb'], duration=show['duration']))
     return dir
