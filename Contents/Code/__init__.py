@@ -35,10 +35,6 @@ def Start():
     global CONFIG
     global TOKEN
     
-    
-    TOKEN = str(OldGetToken())
-    Log("Got Token: " + str(TOKEN))
-    
     Plugin.AddPrefixHandler(VIDEO_PREFIX, VideoMainMenu, L('VideoTitle'), ICON, ART)
 
     Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
@@ -71,7 +67,11 @@ def GetGlobalConfig(URL):
             
         if ('"client' in x) & (clientFound == 1):
             if client != {}:
-                #client['playlistData'] = XML.ElementFromURL(TOP_URL + client['playlist'] + "?depth=2&token=" + client['token'] + TOP_SUFFIX)
+                #now we have token get parent playlist as required for some client configs
+                rootPlaylistURL = "http://api.v2.movideo.com/rest/playlist/" + client['playlist'] + "/firstRootPlaylist?token=" + client['token']
+                newPlaylistID = GetRootPlaylist(rootPlaylistURL)
+                Log("playlist >>>> " + newPlaylistID)
+                client['playlist'] = newPlaylistID
                 configPlaylists.append(client)
                 
             client = {}
@@ -93,7 +93,7 @@ def GetGlobalConfig(URL):
                 client[prev] = x.replace("\"","")
                 Log(prev + " >> " + x.replace("\"",""))
             
-                
+    CONFIG = configPlaylists            
     return configPlaylists
     
 def OldGetToken():
@@ -102,6 +102,9 @@ def OldGetToken():
     Log(xml)
     return xml.xpath('/session')[0].find("token").text
     
+def GetRootPlaylist(URL):
+    xml = XML.ElementFromURL(URL)
+    return xml.xpath('/playlist')[0].find("id").text    
     
 def GetToken(URL):
     xml = XML.ElementFromURL(URL)
@@ -110,7 +113,8 @@ def GetToken(URL):
 def GetSeriesForCategory(category):
     
     seriesSummaries = []
-    Log("attempting>>"+ TOP_URL + category['playlist'] + "?depth=2&token=" + category['token'] + TOP_SUFFIX)   
+    Log("attempting>>"+ TOP_URL + category['playlist'] + "?depth=2&token=" + category['token'] + TOP_SUFFIX)
+    
     xml = XML.ElementFromURL(TOP_URL + category['playlist'] + "?depth=2&token=" + category['token'] + TOP_SUFFIX)
     
     #loop throough child playlist for selected category - pulling out show titles
@@ -122,11 +126,45 @@ def GetSeriesForCategory(category):
         seriesSummary['title'] = title
         seriesSummary['keywords'] = category
         seriesSummary['thumb'] = ""
+        seriesSummary['xml'] = series
         seriesSummaries.append(seriesSummary)
                 
     return seriesSummaries
 
-
+#use API to get media object for a given playlist
+def GetMedia(playlistID,token):
+    mediaURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "/media?token=" + token
+    xml = XML.ElementFromURL(mediaURL)
+    shows = []
+    for media in xml.xpath('/media'):
+        show = {}
+        show['title'] = media.find('title').text
+        show['description'] = media.find('description').text
+        show['duration'] = media.find('duration').text
+        show['thumb'] = media.xpath("defaultImage/url")[0].text
+        show['aired_date'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[0]
+        show['aired_time'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[2]
+        Log("SHOW >>>>>> ")
+        Log(str(show))
+        shows.append(show)
+    
+    return shows
+   
+#use API to get child playlist(s) for any given playlist        
+def GetChildPlaylists(playlistID,token):
+    childURL = "http://api.v2.movideo.com/rest/playlist/" + playlistID + "/onlyChildPlaylists=true&depth=2?token=" + token
+    xml = XML.ElementFromURL(childURL)
+    playlists = []
+    for plist in xml.xpath('/playlist/childPlaylists'):
+        playlist = {}
+        playlist['token'] = token
+        playlist['ID'] = plist.find('id').text
+        playlist['title'] = plist.find('title').text
+        playlist['description'] = plist.find('description').text
+        playlists.append(playlist)
+    
+    return playlists    
+    
 def GetSeriesInfo(seriesId):
     xml = XML.ElementFromURL(SERIES_URL + seriesId + "?token=" + TOKEN + SERIES_SUFFIX)
     SERIES_PLAYLIST_ID = xml.xpath('/playlist/childPlaylists/playlist')[0].find("id").text
@@ -151,9 +189,6 @@ def GetSeriesInfo(seriesId):
         episodes.append(episode)
     return episodes
     
-def GetSeriesInfosForCategory(category):
-    return GetSeriesForCategory(category)
-
 #setup the Main Video Menu - ie. get Top level categories
 def VideoMainMenu():
     dir = MediaContainer(viewGroup="InfoList")
@@ -164,9 +199,8 @@ def VideoMainMenu():
 
 #Handle drill down on a category
 def CategoryMenu(sender, category):
-    
-    seriesInfos = GetSeriesInfosForCategory(category)
-    Log(str(seriesInfos))
+    seriesInfos = GetSeriesForCategory(category)
+    #Log(str(seriesInfos))
     
     #if category != "recent":
     #   seriesInfos.sort(key=lambda si: si["title"].lower())
@@ -175,7 +209,7 @@ def CategoryMenu(sender, category):
     
     for seriesInfo in seriesInfos:
         dir.Append(Function(DirectoryItem(SeriesMenu, seriesInfo['title'], thumb=seriesInfo['thumb']), 
-                   series = seriesInfo[xml])
+                   series = seriesInfo['title']))
     
     return dir
 
