@@ -2,7 +2,6 @@
 from PMS import *
 from PMS.Objects import *
 from PMS.Shortcuts import *
-import urllib2
 import re
 
 ####################################################################################################
@@ -34,11 +33,10 @@ def Start():
 
 def GetGlobalConfig(URL):
    
-    response = urllib2.urlopen(URL)
-    conf = response.read();
+    response = HTTP.Request(URL)
     
     #pull out playlist and info to retrieve tokens
-    split = re.findall('"[\w|\s|\-|:|\.|\/]*"',conf)
+    split = re.findall('"[\w|\s|\-|:|\.|\/]*"',response)
     configPlaylists = []
     client = {}
     clientFound = 0
@@ -82,16 +80,16 @@ def GetGlobalConfig(URL):
     return configPlaylists
     
 def GetRootPlaylist(URL):
-    xml = XML.ElementFromURL(URL)
+    xml = XML.ElementFromURL(URL, cacheTime=1800)
     return xml.xpath('/playlist')[0].find("id").text    
     
 def GetToken(URL):
-    xml = XML.ElementFromURL(URL)
+    xml = XML.ElementFromURL(URL, cacheTime=1800)
     return xml.xpath('/session')[0].find("token").text    
 
 def GetImage(mediaID,token):
     imageURL = API_URL + "media/" + mediaID + "/images?token=" + token
-    xml = XML.ElementFromURL(imageURL)
+    xml = XML.ElementFromURL(imageURL, cacheTime=1800)
     Log("Image URL>>" + xml.xpath('/list/image/url')[2].text)
     return xml.xpath('/list/image/url')[2].text
     
@@ -99,7 +97,7 @@ def GetImage(mediaID,token):
 def GetMedia(playlistID,token):
     mediaURL = API_URL + "playlist/" + playlistID + "?depth=2&token=" + token + TOP_SUFFIX
     Log("MediaURL >> " + mediaURL)
-    xml = XML.ElementFromURL(mediaURL)
+    xml = XML.ElementFromURL(mediaURL, cacheTime=1800)
     shows = []
     for media in xml.xpath('/playlist/mediaList/media'):
         show = {}
