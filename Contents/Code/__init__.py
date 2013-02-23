@@ -1,7 +1,4 @@
 # PMS plugin framework
-from PMS import *
-from PMS.Objects import *
-from PMS.Shortcuts import *
 import re
 
 ####################################################################################################
@@ -22,11 +19,9 @@ def Start():
     
     Plugin.AddPrefixHandler(VIDEO_PREFIX, VideoMainMenu, L('VideoTitle'), ICON, ART)
     Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
-
     MediaContainer.art = R(ART)
     MediaContainer.title1 = NAME
     DirectoryItem.thumb = R(ICON)
-    
     HTTP.SetCacheTime(DEFAULT_CACHE_INTERVAL)
     
 ####################################################################################################
@@ -36,7 +31,7 @@ def GetGlobalConfig(URL):
     response = HTTP.Request(URL)
     
     #pull out playlist and info to retrieve tokens
-    split = re.findall('"[\w|\s|\-|:|\.|\/]*"',response)
+    split = re.findall('"[\w|\s|\-|:|\.|\/]*"',response.content)
     configPlaylists = []
     client = {}
     clientFound = 0
@@ -166,8 +161,7 @@ def PlaylistMenu(sender, playlist):
     else:
         mediaList = GetMedia(playlist['ID'],playlist['token'])
         for show in mediaList:
-            description = "Broadcast " + show['airedDate'] + " at " + show['airedTime'] + "." +"\n"
-            description += "\n" + show['description'] + "\n"
+            description = "Broadcast " + show['airedDate'] + " at " + show['airedTime'] + "." +"\n\n" + show['description'] + "\n"
             showURL = playlist['videoPageURL'] + "?movideo_p=" + playlist['ID'] + "&movieo_m=" + show['ID']
             Log(show['title'] + " >> " + showURL)
             dir.Append(WebVideoItem(showURL, title=show['title'], subtitle="",
