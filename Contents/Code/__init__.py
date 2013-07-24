@@ -6,10 +6,8 @@ import string
 
 VIDEO_PREFIX = "/video/Channel10"
 NAME = L('Title')
-DEFAULT_CACHE_INTERVAL = 0
-#1800
-OTHER_CACHE_INTERVAL = 0
-#300
+DEFAULT_CACHE_INTERVAL = 1800
+OTHER_CACHE_INTERVAL = 300
 ART           = 'ch10-background.jpg'
 ICON          = 'icon-default.jpg'
 API_URL = "http://api.brightcove.com/services/library"
