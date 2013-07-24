@@ -1,17 +1,25 @@
 # PMS plugin framework
 import re
-
+import urllib
+import string
 ####################################################################################################
 
-VIDEO_PREFIX = "/video/sc10"
+VIDEO_PREFIX = "/video/Channel10"
 NAME = L('Title')
-DEFAULT_CACHE_INTERVAL = 1800
-OTHER_CACHE_INTERVAL = 300
+DEFAULT_CACHE_INTERVAL = 0
+#1800
+OTHER_CACHE_INTERVAL = 0
+#300
 ART           = 'ch10-background.jpg'
 ICON          = 'icon-default.jpg'
-TOP_SUFFIX = "&omitFields=client,copyright,creationDate,cuePointsExist,defaultImage,encodingProfiles,filename,mediaFileExists,mediaType,lastModifiedDate,ratio,status,syndicated,tagProfileId"
-CONFIG_URL = "http://ten.com.au/ten.video-settings.js"
-API_URL = "http://api.v2.movideo.com/rest/"
+API_URL = "http://api.brightcove.com/services/library"
+#API TOKEN retrieved from: http://code.ten.com.au/video/bc.ten_video.common.1.1.js
+API_TOKEN = "lWCaZyhokufjqe7H4TLpXwHSTnNXtqHxyMvoNOsmYA_GRaZ4zcwysw.."
+#Query to find all TV shows
+API_COMMAND_SUFFIX = "&page_size=100&none=prevent_web:true&get_item_count=true&media_delivery=http&video_fields=id,name,endDate,shortDescription,length,tags,thumbnailURL,creationDate,length,FLVURL&custom_fields=tv_channel,tv_show,tv_season,cast,video_type_long_form,video_type_short_form"
+API_COMMAND = "command=search_videos"
+DEFAULT_SEARCH = "sort_by=PUBLISH_DATE:ASC"
+TEN_SHOWS = "http://ten.com.au/NWT_showlist.js"
 
 ####################################################################################################
 
@@ -26,144 +34,108 @@ def Start():
     
 ####################################################################################################
 
-def GetGlobalConfig(URL):
-   
-    response = HTTP.Request(URL)
-    
-    #pull out playlist and info to retrieve tokens
-    split = re.findall('"[\w|\s|\-|:|\.|\/]*"',response.content)
-    configPlaylists = []
-    client = {}
-    clientFound = 0
-    firstTime = 1
-    prev = ""
-    
-    for x in split:
-        if ('"client' in x) & (clientFound == 0):
-            clientFound = 1
-            
-        if ('"client' in x) & (clientFound == 1):
-            if (client != {}) :
-                if (client['accName'] != 'TEN News') & (client['token'] != ""):
-                    #now we have token get parent playlist as required for some client configs
-                    rootPlaylistURL = API_URL + "playlist/" + client['playlist'] + "/firstRootPlaylist?token=" + client['token']
-                    newPlaylistID = GetRootPlaylist(rootPlaylistURL)
-                    Log("playlist >>>> " + newPlaylistID)
-                    client['playlist'] = newPlaylistID
-                    configPlaylists.append(client)
-                    
-            client = {}
-            client['clientID'] = re.search("[0-9]+",x).group(0)
-        
-        if (firstTime == 1) & (clientFound == 1) & ('"client' not in x):
-            firstTime = 0
-            prev = x.replace("\"","")
-                        
-        elif (firstTime == 0) & (clientFound == 1):
-            firstTime = 1
-            if (prev == 'token'):
-                tokenURL = API_URL + "session?key=" + client['apiKey'] + "&applicationalias=" + client['flashAppName']
-                Log("TOKEN URL>> "+ tokenURL)
-                try:
-                    client[prev] = GetToken(tokenURL)
-                except:
-                    client[prev] = ""
-                Log(prev + " >> " + client[prev])
-            else:
-                client[prev] = x.replace("\"","")
-                Log(prev + " >> " + x.replace("\"",""))
-    return configPlaylists
-    
-def GetRootPlaylist(URL):
-    xml = XML.ElementFromURL(URL, cacheTime=1800)
-    return xml.xpath('/playlist')[0].find("id").text    
-    
-def GetToken(URL):
-    xml = XML.ElementFromURL(URL, cacheTime=1800)
-    return xml.xpath('/session')[0].find("token").text    
+def QueryShow(showName):
+    pageCounter = 0
+    searchTerm = "&all=tv_show:"+urllib.quote(showName)
+    return GetShowsByCriteria(searchTerm,DEFAULT_SEARCH,pageCounter)
 
-def GetImage(mediaID,token):
-    imageURL = API_URL + "media/" + mediaID + "/images?token=" + token
-    xml = XML.ElementFromURL(imageURL, cacheTime=1800)
-    Log("Image URL>>" + xml.xpath('/list/image/url')[2].text)
-    return xml.xpath('/list/image/url')[2].text
-    
-#use API to get media object for a given playlist
-def GetMedia(playlistID,token):
-    mediaURL = API_URL + "playlist/" + playlistID + "?depth=2&token=" + token + TOP_SUFFIX
-    Log("MediaURL >> " + mediaURL)
-    xml = XML.ElementFromURL(mediaURL, cacheTime=1800)
-    shows = []
-    for media in xml.xpath('/playlist/mediaList/media'):
+def ParseShow(entry):
+        Log("found show" + entry['name'])
         show = {}
-        show['title'] = media.find('title').text
-        show['description'] = media.find('description').text
-        show['duration'] = media.find('duration').text
-        show['ID'] = media.find('id').text
+        show['title'] =         entry['name']
+        show['id'] =            entry['id'] 
+        show['description'] =   entry['shortDescription']
+        show['creationDate'] = int(entry['creationDate'])
+        show['creation_date'] = Datetime.FromTimestamp(0) + Datetime.Delta(milliseconds=int(entry['creationDate']))
+        show['thumbnail'] =     entry['thumbnailURL']
+        show['length'] =        int(entry['length'])
         try:
-            #thumb paths are slow to retrieve and not displaying so ignore
-            #show['thumb'] = GetImage(show['ID'],token)
-            media.xpath("defaultImage/url")[0].text
+            show['season'] =    int(entry['customFields']['tv_season'])
         except:
-            show['thumb'] = ""            
+            show['season'] =    0
         try:
-            show['airedDate'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[0]
-            show['airedTime'] = media.xpath("mediaSchedules/mediaSchedule/start")[0].text.partition("T")[2]
+                show['show'] =          entry['customFields']['tv_show']
         except:
-            show['airedDate'] = ""
-            show['airedTime'] = ""
-        
-        shows.append(show)    
-    return shows
-   
-#use API to get child playlist(s) for any given playlist        
-def GetChildPlaylists(playlistID,token,videoPageURL):
-    childURL = API_URL + "playlist/" + playlistID + "?onlyChildPlaylists=true&depth=2&token=" + token
-    Log("attempting child playlist for >>" + childURL )
-    xml = XML.ElementFromURL(childURL)
-    playlists = []
-    try:
-        for plist in xml.xpath('/playlist/childPlaylists/playlist'):
-            playlist = {}
-            playlist['token'] = token
-            playlist['videoPageURL'] = videoPageURL
-            playlist['ID'] = plist.find('id').text
-            playlist['title'] = plist.find('title').text
-            playlist['description'] = plist.find('description').text
-            playlist['thumb'] = ""
-            playlists.append(playlist)
-    except:
-        pass
+                show['show'] = entry['name']
+        try:
+            show['episode'] = int(Regex('Ep\. (\d+)').search(show['title']).group(0)[4:])
+        except:
+            show['episode'] = 0
     
-    return playlists    
         
-#setup the Main Video Menu - ie. get Top level categories
+        show['playerURL'] = 'http://ten.com.au/watch-tv-episodes-online.htm?vid=' + str(show['id'])
+        return show
+        
+def GetShowsByCriteria(searchTerm,searchOrder, pageNumber):
+    mediaURL = API_URL + "?"+ API_COMMAND+ searchTerm + "&page_number=" + str(pageNumber) + API_COMMAND_SUFFIX + "&token=" + API_TOKEN
+    json = JSON.ObjectFromURL(mediaURL, cacheTime=1800)
+    numShows = json['total_count']
+    pageLimit = (numShows/100)
+    shows = []
+    Log("Got shows:")
+    Log(str(json))
+    for entry in json['items']:
+        shows.append(ParseShow(entry))  
+    
+     
+    #sorted(shows, key=lambda show: show[0])
+    #Log("First key after sorting: "+ shows[0][0])
+    # do we need to get many pages for an individual show?
+    
+    #for pageCounter in range(1, pageLimit):
+    #    Log("Getting page " + str(pageCounter) +" of " + str(pageLimit))
+    #    mediaURL = API_URL + "?"+ API_COMMAND+"&" + searchTerm + "&page_number="+str(pageCounter)+API_COMMAND_SUFFIX+"&token="+API_TOKEN
+    #    json = JSON.ObjectFromURL(mediaURL, cacheTime=1800)
+    #    for entry in json['items']:
+    #        shows.append(ParseShow(entry))          
+    #
+    return shows
+
+def GetShowsByChannel(channel):
+    searchTerm = "all=tv_channel:"+channel
+    searchOrder = DEFAULT_SEARCH
+    return GetShowsByCriteria(searchTerm,searchOrder)
+    
+@handler('/video/Channel10', NAME)
 def VideoMainMenu():
-    dir = MediaContainer(viewGroup="InfoList")
-    conf = GetGlobalConfig(CONFIG_URL)
-    for x in conf:
-        temp = {}
-        temp['ID'] = x['playlist']
-        temp['token'] = x['token']
-        temp['videoPageURL'] = x['videoPageURL']
-        temp['title'] = x['accName']
-        dir.Append(Function(DirectoryItem(PlaylistMenu, x['accName']), playlist = temp ))    
+    dir = MediaContainer(viewGroup="InfoList"  )
+    result = HTTP.Request(url=TEN_SHOWS, cacheTime=1800)
+    result = str(result)[13:]
+    
+    result = JSON.ObjectFromString(result)
+    Log('Shows pre sort:')
+    Log(str(result))
+    shows = result["shows"]
+    
+    shows.sort(key=lambda show: show["showName"].lower())
+    Log('Shows post sort')
+    Log(str(shows))
+    for showDetail in shows:
+        if showDetail['showName'] != '':
+            dir.Append(Function(DirectoryItem(ShowMenu, showDetail['showName']), show=showDetail['showName']))           
     return dir
 
-def PlaylistMenu(sender, playlist):
-    dir = MediaContainer(viewGroup="InfoList", title2=playlist['title'])
-    childPlist = GetChildPlaylists(playlist['ID'],playlist['token'],playlist['videoPageURL'])
+@route('/video/Channel10/ShowMenu')
+def ShowMenu(sender, show):
+    episodes = QueryShow(show)
+    oc = ObjectContainer(title2=show)
     
-    if len(childPlist) > 0:
-        for plist in childPlist:
-            dir.Append(Function(DirectoryItem(PlaylistMenu, plist['title'], thumb=plist['thumb']), 
-                       playlist = plist))
-    else:
-        mediaList = GetMedia(playlist['ID'],playlist['token'])
-        for show in mediaList:
-            description = "Broadcast " + show['airedDate'] + " at " + show['airedTime'] + "." +"\n\n" + show['description'] + "\n"
-            showURL = playlist['videoPageURL'] + "?movideo_p=" + playlist['ID'] + "&movieo_m=" + show['ID']
-            Log(show['title'] + " >> " + showURL)
-            dir.Append(WebVideoItem(showURL, title=show['title'], subtitle="",
-                                   summary=description, thumb=show['thumb'], duration=show['duration']))
-    return dir
+    #pad episodes to order eg. S01E12 = 102, vs. S01E1 = 101
+    episodes.sort(key=lambda episode: episode['creationDate'], reverse=True)
+    
+    for episode in episodes:
+        Log(str(episode))        
+        oc.add(EpisodeObject(   
+                    url = episode['playerURL'],
+                    rating_key = episode['id'],
+                    show = episode['show'],
+                    season = episode['season'],
+                    absolute_index = episode['episode'],
+                    title = episode['title'],
+                    summary = episode['description'],
+                    originally_available_at = episode['creation_date'],
+                    duration = episode['length'],
+                    thumb = episode['thumbnail']
+                ))
+    
+    return oc
