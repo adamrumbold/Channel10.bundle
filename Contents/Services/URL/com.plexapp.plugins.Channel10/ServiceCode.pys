@@ -2,20 +2,18 @@ API_URL = "http://api.brightcove.com/services/library"
 API_PREFIX="http://api.brightcove.com/services/library?command=find_video_by_id&video_id="
 #API TOKEN retrieved from: http://code.ten.com.au/video/bc.ten_video.common.1.1.js
 API_TOKEN = "lWCaZyhokufjqe7H4TLpXwHSTnNXtqHxyMvoNOsmYA_GRaZ4zcwysw.."
-#Query to find all TV shows
-API_COMMAND_SUFFIX = "&page_size=10&none=prevent_web:true&get_item_count=true&media_delivery=http&video_fields=id,name,endDate,shortDescription,length,tags,thumbnailURL,creationDate,length,FLVURL&custom_fields=tv_channel,tv_show,tv_season,cast,video_type_long_form,video_type_short_form"
+API_COMMAND_SUFFIX = "&page_size=10&none=prevent_web:true&get_item_count=true&media_delivery=http&video_fields=id,name,endDate,renditions,shortDescription,length,tags,thumbnailURL,creationDate,length,FLVURL&custom_fields=tv_channel,tv_show,tv_season,cast,video_type_long_form,video_type_short_form"
 
 def NormalizeURL(url):
 	#todo handle media pages that have no ?vid=NNNNNNNNN 
 	return url
-
 
 def MetadataObjectForURL(url):
 	Log("Requested metadata object for URL: "+ url)
 	# Request the URL
 	RE_VID_ID = Regex('vid=([0-9]+)')
 	ID = RE_VID_ID.search(url).group(0)
-	
+	#using find_video_by_id API	
 	mediaURL = API_PREFIX + ID[4:] + "&page_number=0"+ API_COMMAND_SUFFIX + "&token=" + API_TOKEN
 	entry = JSON.ObjectFromURL(mediaURL, cacheTime=1800)
 	
@@ -29,48 +27,62 @@ def MetadataObjectForURL(url):
 	show['thumbnail'] =     entry['thumbnailURL']
 	show['length'] =        int(entry['length'])
 	try:
-	    show['season'] =    int(entry['customFields']['tv_season'])
-	except:
-	    show['season'] =    0
+            show['season'] = int(entry['customFields']['tv_season'])
+        except:
+            show['season'] = 0
+        try:
+            show['episode'] = int(Regex('Ep\. (\d+)').search(show['title']).group(1))
+        except:
+            show['episode'] = 0
+	show['playerURL'] = 'http://ten.com.au/watch-tv-episodes-online.htm?vid=' + str(show['id'])
+	
 	try:
 		show['show'] =          entry['customFields']['tv_show']
 	except:
 		show['show'] = entry['name']
-	try:
-	    show['episode'] = int(Regex('Ep\. (\d+)').search(show['title']).group(0)[4:])
-	except:
-	    show['episode'] = 0
-
-	show['playerURL'] = 'http://ten.com.au/watch-tv-episodes-online.htm?vid=' + str(show['id'])
+	
 	return EpisodeObject(
 		show = show['show'],
 		title = show['title'],
 		season = show['season'],
-		absolute_index = episode['episode'],
+		absolute_index = show['episode'],
 		summary = show['description'],
 		originally_available_at = show['creation_date'],
 		thumb = show['thumbnail']
 	)
 
 def MediaObjectsForURL(url):
-    return [
-        MediaObject(
-            video_codec = VideoCodec.H264,
-            audio_codec = AudioCodec.AAC,
-            container =  Container.MP4,
-            parts = [PartObject(key=Callback(PlayVideo, url = url))]
-        )
-    ]    
+	resolution = [180,360]
+	MediaObjects = []
+	for res in resolution:
+		MediaObjects.append(
+			MediaObject(
+			video_codec = VideoCodec.H264,
+			audio_codec = AudioCodec.AAC,
+			container =  Container.MP4,
+			video_resolution = res,
+			parts = [PartObject(key=Callback(PlayVideo, url=url, resolution=res))]	
+			)
+		)
+	
+	return MediaObjects
  
-def PlayVideo(url):
- 
-    # Request the URL
-    RE_VID_ID = Regex('vid=([0-9]+)')    
-    ID = RE_VID_ID.search(url).group(0)
-    Log("Got ID" + str(ID[4:]))
-    mediaURL = API_PREFIX + ID[4:] + "&page_number=0"+ API_COMMAND_SUFFIX + "&token=" + API_TOKEN
-    json = JSON.ObjectFromURL(mediaURL, cacheTime=1800)
-    #use API to actual get direct MP4 URL  
-    video_url = json['FLVURL']
- 
-    return Redirect(video_url)    
+def PlayVideo(url, resolution=None):
+
+	# Request the URL
+	RE_VID_ID = Regex('vid=([0-9]+)')    
+	ID = RE_VID_ID.search(url).group(1)
+	Log("Got ID" + str(ID))
+	mediaURL = API_PREFIX + ID + "&page_number=0"+ API_COMMAND_SUFFIX + "&token=" + API_TOKEN
+	json = JSON.ObjectFromURL(mediaURL, cacheTime=1800)
+	playerURL = json['FLVURL']
+	maxBitrate = 0
+	#play best quality video for now - 
+	for rendition in json['renditions']:
+		if int(rendition['frameHeight']) == resolution and int(rendition['encodingRate']) >= maxBitrate:
+			playerURL = rendition['url']
+			maxBitrate = rendition['encodingRate']
+			
+		
+	#use API to actual get direct MP4 URL  
+	return Redirect(playerURL)    

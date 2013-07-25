@@ -1,7 +1,5 @@
 # PMS plugin framework
 import re
-import urllib
-import string
 ####################################################################################################
 
 VIDEO_PREFIX = "/video/Channel10"
@@ -33,12 +31,10 @@ def Start():
 ####################################################################################################
 
 def QueryShow(showName):
-    pageCounter = 0
-    searchTerm = "&all=tv_show:"+urllib.quote(showName)
-    return GetShowsByCriteria(searchTerm,DEFAULT_SEARCH,pageCounter)
+    searchTerm = "&all=tv_show:"+String.Quote(showName, usePlus=True)
+    return GetShowsByCriteria(searchTerm,DEFAULT_SEARCH,0)
 
 def ParseShow(entry):
-        Log("found show" + entry['name'])
         show = {}
         show['title'] =         entry['name']
         show['id'] =            entry['id'] 
@@ -48,25 +44,23 @@ def ParseShow(entry):
         show['thumbnail'] =     entry['thumbnailURL']
         show['length'] =        int(entry['length'])
         try:
-            show['season'] =    int(entry['customFields']['tv_season'])
+            show['season'] = int(entry['customFields']['tv_season'])
         except:
-            show['season'] =    0
+            show['season'] = 0
         try:
-                show['show'] =          entry['customFields']['tv_show']
-        except:
-                show['show'] = entry['name']
-        try:
-            show['episode'] = int(Regex('Ep\. (\d+)').search(show['title']).group(0)[4:])
+            show['episode'] = int(Regex('Ep\. (\d+)').search(show['title']).group(1))
         except:
             show['episode'] = 0
-    
-        
+        try:
+                show['show'] = entry['customFields']['tv_show']
+        except:
+                show['show'] = entry['name']
         show['playerURL'] = 'http://ten.com.au/watch-tv-episodes-online.htm?vid=' + str(show['id'])
         return show
         
 def GetShowsByCriteria(searchTerm,searchOrder, pageNumber):
     mediaURL = API_URL + "?"+ API_COMMAND+ searchTerm + "&page_number=" + str(pageNumber) + API_COMMAND_SUFFIX + "&token=" + API_TOKEN
-    json = JSON.ObjectFromURL(mediaURL, cacheTime=1800)
+    json = JSON.ObjectFromURL(mediaURL, cacheTime=DEFAULT_CACHE_INTERVAL)
     numShows = json['total_count']
     pageLimit = (numShows/100)
     shows = []
@@ -75,10 +69,7 @@ def GetShowsByCriteria(searchTerm,searchOrder, pageNumber):
     for entry in json['items']:
         shows.append(ParseShow(entry))  
     
-     
-    #sorted(shows, key=lambda show: show[0])
-    #Log("First key after sorting: "+ shows[0][0])
-    # do we need to get many pages for an individual show?
+   # do we need to get many pages for an individual show?
     
     #for pageCounter in range(1, pageLimit):
     #    Log("Getting page " + str(pageCounter) +" of " + str(pageLimit))
@@ -97,17 +88,9 @@ def GetShowsByChannel(channel):
 @handler('/video/Channel10', NAME)
 def VideoMainMenu():
     dir = MediaContainer(viewGroup="InfoList"  )
-    result = HTTP.Request(url=TEN_SHOWS, cacheTime=1800)
-    result = str(result)[13:]
-    
-    result = JSON.ObjectFromString(result)
-    Log('Shows pre sort:')
-    Log(str(result))
-    shows = result["shows"]
-    
+    result = HTTP.Request(url=TEN_SHOWS, cacheTime=DEFAULT_CACHE_INTERVAL)
+    shows = JSON.ObjectFromString(str(result)[13:])["shows"]
     shows.sort(key=lambda show: show["showName"].lower())
-    Log('Shows post sort')
-    Log(str(shows))
     for showDetail in shows:
         if showDetail['showName'] != '':
             dir.Append(Function(DirectoryItem(ShowMenu, showDetail['showName']), show=showDetail['showName']))           
@@ -116,9 +99,7 @@ def VideoMainMenu():
 @route('/video/Channel10/ShowMenu')
 def ShowMenu(sender, show):
     episodes = QueryShow(show)
-    oc = ObjectContainer(title2=show)
-    
-    #pad episodes to order eg. S01E12 = 102, vs. S01E1 = 101
+    oc = ObjectContainer(title1='Channel 10', title2=show)
     episodes.sort(key=lambda episode: episode['creationDate'], reverse=True)
     
     for episode in episodes:
